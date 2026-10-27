@@ -1,0 +1,1 @@
+# Ingilizce-Kelime-Kartlari
