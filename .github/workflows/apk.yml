@@ -1,0 +1,60 @@
+name: APK oluştur
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SITE: https://dainty-raindrop-0b08e6.netlify.app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Uygulama dosyalarını indir
+        run: |
+          curl -fsSL "$SITE/android-project.zip" -o project.zip
+          mkdir src && unzip -q project.zip -d src
+
+      - name: İmza anahtarı
+        run: |
+          if [ ! -f release.jks ]; then
+            keytool -genkeypair -keystore release.jks -storepass kelimekartlari -keypass kelimekartlari -alias kelime -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Kelime Kartlari"
+            git config user.name "github-actions"
+            git config user.email "github-actions@users.noreply.github.com"
+            git add release.jks
+            git commit -m "İmza anahtarı"
+            git push
+          fi
+          cp release.jks src/release.jks
+
+      - name: APK'yı derle
+        working-directory: src
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          KS_PASS: kelimekartlari
+        run: |
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../KelimeKartlari.apk
+
+      - name: İndirmeye hazırla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.run_number }}
+          name: Kelime Kartları ${{ github.run_number }}
+          files: KelimeKartlari.apk
