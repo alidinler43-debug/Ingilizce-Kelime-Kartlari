@@ -1,0 +1,48 @@
+name: APK oluştur (Kartu Kata Turki)
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+env:
+  SITE: https://dashing-unicorn-3316a4.netlify.app
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Uygulama dosyalarını indir
+        run: |
+          curl -fsSL "$SITE/android-project.zip" -o project.zip
+          mkdir src && unzip -q project.zip -d src
+          cp release.jks src/release.jks
+
+      - name: APK'yı derle
+        working-directory: src
+        env:
+          VERSION_CODE: ${{ github.run_number }}
+          KS_PASS: kelimekartlari
+        run: |
+          gradle assembleRelease --no-daemon
+          cp app/build/outputs/apk/release/app-release.apk ../KartuKataTurki.apk
+
+      - name: İndirmeye hazırla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: id-v${{ github.run_number }}
+          name: Kartu Kata Turki ${{ github.run_number }}
+          files: KartuKataTurki.apk
+          make_latest: false
