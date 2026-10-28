@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  SITE: https://sunny-cat-a1b2c3.netlify.app
+  SITE: https://monumental-jelly-138608.netlify.app
 
 jobs:
   build:
