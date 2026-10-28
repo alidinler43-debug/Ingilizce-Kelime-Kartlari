@@ -9,7 +9,7 @@ permissions:
   contents: write
 
 env:
-  SITE: https://dainty-raindrop-0b08e6.netlify.app
+  SITE: https://sunny-cat-a1b2c3.netlify.app
 
 jobs:
   build:
