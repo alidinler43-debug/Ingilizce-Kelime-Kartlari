@@ -1,4 +1,4 @@
-name: APK oluştur
+ name: APK oluştur
 
 on:
   push:
@@ -26,9 +26,13 @@ jobs:
         with:
           gradle-version: '8.9'
 
-      - name: Uygulama dosyalarını indir
+      - name: Uygulama dosyalarını hazırla
         run: |
-          curl -fsSL "$SITE/android-project.zip" -o project.zip
+          if [ -f android-project.zip ]; then
+            cp android-project.zip project.zip
+          else
+            curl -fsSL "$SITE/android-project.zip" -o project.zip
+          fi
           mkdir src && unzip -q project.zip -d src
 
       - name: İmza anahtarı
