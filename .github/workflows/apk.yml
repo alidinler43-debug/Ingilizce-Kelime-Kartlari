@@ -1,4 +1,4 @@
- name: APK oluştur
+name: APK oluştur
 
 on:
   push:
@@ -28,12 +28,17 @@ jobs:
 
       - name: Uygulama dosyalarını hazırla
         run: |
-          if [ -f android-project.zip ]; then
-            cp android-project.zip project.zip
-          else
-            curl -fsSL "$SITE/android-project.zip" -o project.zip
-          fi
-          mkdir src && unzip -q project.zip -d src
+          # Any uploaded zip works, whatever its name: the Android project itself,
+          # or the app package that has the Android project inside it.
+          found=""
+          for f in android-project*.zip *.zip; do
+            [ -f "$f" ] || continue
+            if unzip -l "$f" | grep -q "app/build.gradle"; then found="$f"; break; fi
+            if unzip -l "$f" | grep -q "android-project.zip"; then unzip -p "$f" android-project.zip > inner.zip; found=inner.zip; break; fi
+          done
+          if [ -z "$found" ]; then curl -fsSL "$SITE/android-project.zip" -o project.zip; found=project.zip; fi
+          echo "Kullanılan dosya: $found"
+          mkdir src && unzip -q "$found" -d src
 
       - name: İmza anahtarı
         run: |
