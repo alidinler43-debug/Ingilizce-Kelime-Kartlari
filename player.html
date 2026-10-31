@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Player</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}#p{width:100%;height:100%}</style>
+</head>
+<body>
+<div id="p"></div>
+<script>
+// YouTube player used inside the Kelime Kartları app. The app sends commands (play, pause, seek, speed)
+// and this page reports the playing time back, so the app can follow along in the subtitles.
+var player = null, ready = false;
+var id = new URLSearchParams(location.search).get('v') || '';
+function send(m){ m.src = 'kkplayer'; try { parent.postMessage(m, '*'); } catch (e) {} }
+function onYouTubeIframeAPIReady(){
+  player = new YT.Player('p', {
+    videoId: id,
+    playerVars: { playsinline: 1, rel: 0, modestbranding: 1, cc_load_policy: 0, iv_load_policy: 3 },
+    events: {
+      onReady: function(){ ready = true; send({ type: 'ready', duration: player.getDuration() }); },
+      onStateChange: function(e){ send({ type: 'state', state: e.data }); },
+      onError: function(e){ send({ type: 'error', code: e.data }); }
+    }
+  });
+  setInterval(function(){
+    if (ready) send({ type: 'time', t: player.getCurrentTime(), playing: player.getPlayerState() === 1 });
+  }, 200);
+}
+addEventListener('message', function(e){
+  var d = e.data || {};
+  if (!ready || d.src !== 'kkapp') return;
+  if (d.cmd === 'play') player.playVideo();
+  else if (d.cmd === 'pause') player.pauseVideo();
+  else if (d.cmd === 'seek') { player.seekTo(d.t, true); if (d.play) player.playVideo(); }
+  else if (d.cmd === 'rate') player.setPlaybackRate(d.rate);
+});
+</script>
+<script src="https://www.youtube.com/iframe_api"></script>
+</body>
+</html>
