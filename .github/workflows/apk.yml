@@ -16,6 +16,8 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - uses: actions/setup-java@v4
         with:
@@ -28,14 +30,22 @@ jobs:
 
       - name: Uygulama dosyalarını hazırla
         run: |
-          # Any uploaded zip works, whatever its name: the Android project itself,
-          # or the app package that has the Android project inside it.
+          # Every uploaded zip that holds the app is looked at, whatever its name,
+          # and the one uploaded LAST is used (an old "android-project (1).zip" can no longer win).
           found=""
-          for f in android-project*.zip *.zip; do
+          newest=0
+          for f in *.zip; do
             [ -f "$f" ] || continue
-            if unzip -l "$f" | grep -q "app/build.gradle"; then found="$f"; break; fi
-            if unzip -l "$f" | grep -q "android-project.zip"; then unzip -p "$f" android-project.zip > inner.zip; found=inner.zip; break; fi
+            if unzip -l "$f" | grep -q "app/build.gradle" || unzip -l "$f" | grep -q "android-project.zip"; then
+              t=$(git log -1 --format=%ct -- "$f")
+              t=${t:-0}
+              echo "Bulunan: $f (yüklenme: $(date -d @$t '+%Y-%m-%d %H:%M'))"
+              if [ "$t" -gt "$newest" ]; then newest=$t; found="$f"; fi
+            fi
           done
+          if [ -n "$found" ] && ! unzip -l "$found" | grep -q "app/build.gradle"; then
+            unzip -p "$found" android-project.zip > inner.zip; found=inner.zip
+          fi
           if [ -z "$found" ]; then curl -fsSL "$SITE/android-project.zip" -o project.zip; found=project.zip; fi
           echo "Kullanılan dosya: $found"
           mkdir src && unzip -q "$found" -d src
