@@ -1,0 +1,132 @@
+name: Windows uygulaması
+
+on:
+  push:
+    branches: [main]
+    paths: ['**.zip', '.github/workflows/windows.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: windows
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: windows-latest
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Uygulama dosyalarını hazırla
+        run: |
+          command -v unzip >/dev/null || choco install unzip -y --no-progress
+          # the app package uploaded LAST, whatever its name (same rule as the APK build)
+          found=""; newest=0
+          for f in *.zip; do
+            [ -f "$f" ] || continue
+            if unzip -l "$f" | grep -q "app/build.gradle" || unzip -l "$f" | grep -q "android-project.zip"; then
+              t=$(git log -1 --format=%ct -- "$f"); t=${t:-0}
+              if [ "$t" -gt "$newest" ]; then newest=$t; found="$f"; fi
+            fi
+          done
+          if [ -n "$found" ] && ! unzip -l "$found" | grep -q "app/build.gradle"; then
+            unzip -p "$found" android-project.zip > inner.zip; found=inner.zip
+          fi
+          if [ -z "$found" ]; then echo "::error::Uygulama dosyası bulunamadı"; exit 1; fi
+          echo "Kullanılan dosya: $found"
+          rm -rf src win && mkdir src win
+          unzip -q "$found" -d src
+          mkdir -p win/web && cp -r src/app/src/main/assets/. win/web/
+          for z in *.zip; do
+            if unzip -l "$z" 2>/dev/null | grep -q "icons/icon-512.png"; then unzip -p "$z" icons/icon-512.png > win/icon.png; break; fi
+          done
+          ls -la win win/web | head -20
+
+      - name: Windows penceresi
+        working-directory: win
+        run: |
+          cat > main.js <<'EOF'
+          // Kelime Kartları for Windows: the same app as on the phone, in its own window.
+          const { app, BrowserWindow, Menu, shell } = require('electron');
+          const path = require('path');
+
+          app.setAppUserModelId('com.kelimekartlari.desktop');
+
+          function openWindow() {
+            const icon = path.join(__dirname, 'icon.png');
+            const win = new BrowserWindow({
+              width: 1200, height: 820, minWidth: 380, minHeight: 560,
+              backgroundColor: '#DDE4EB', title: 'Kelime Kartları', autoHideMenuBar: true,
+              icon: require('fs').existsSync(icon) ? icon : undefined,
+              webPreferences: { contextIsolation: true, sandbox: true, spellcheck: false }
+            });
+            Menu.setApplicationMenu(null);
+            // links to other sites open in the normal web browser; the app itself stays in its window
+            win.webContents.setWindowOpenHandler(({ url }) => {
+              if (/^https?:/i.test(url)) shell.openExternal(url);
+              return { action: 'deny' };
+            });
+            win.webContents.on('will-navigate', (e, url) => {
+              if (/^https?:/i.test(url)) { e.preventDefault(); shell.openExternal(url); }
+            });
+            win.loadFile(path.join(__dirname, 'web', 'index.html'));
+          }
+
+          if (!app.requestSingleInstanceLock()) {
+            app.quit();
+          } else {
+            app.on('second-instance', () => {
+              const w = BrowserWindow.getAllWindows()[0];
+              if (w) { if (w.isMinimized()) w.restore(); w.focus(); }
+            });
+            app.whenReady().then(openWindow);
+            app.on('window-all-closed', () => app.quit());
+          }
+          EOF
+          node -e "
+            const fs = require('fs');
+            const hasIcon = fs.existsSync('icon.png');
+            const pkg = {
+              name: 'kelime-kartlari', productName: 'Kelime Kartları', version: '1.0.' + process.env.RUN,
+              description: 'Kelime Kartları', author: 'Kelime Kartları', main: 'main.js',
+              build: {
+                appId: 'com.kelimekartlari.desktop', productName: 'Kelime Kartları', executableName: 'KelimeKartlari',
+                artifactName: 'KelimeKartlari-Kurulum.\${ext}', directories: { output: 'dist' },
+                files: ['main.js', 'web/**/*'].concat(hasIcon ? ['icon.png'] : []),
+                win: Object.assign({ target: [{ target: 'nsis', arch: ['x64'] }] }, hasIcon ? { icon: 'icon.png' } : {}),
+                nsis: { oneClick: true, perMachine: false, runAfterFinish: true, createDesktopShortcut: 'always',
+                        createStartMenuShortcut: true, shortcutName: 'Kelime Kartları', deleteAppDataOnUninstall: false,
+                        installerLanguages: ['tr_TR'], language: '1055' }
+              }
+            };
+            fs.writeFileSync('package.json', JSON.stringify(pkg, null, 2));
+          "
+          cat package.json
+        env:
+          RUN: ${{ github.run_number }}
+
+      - name: Kurulum dosyasını derle
+        working-directory: win
+        run: |
+          npm install --no-audit --no-fund --save-dev electron@33.2.1 electron-builder@25.1.8
+          npx electron-builder --win --publish never
+          ls -la dist
+
+      - name: İndirmeye hazırla
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: win-v${{ github.run_number }}
+          name: Kelime Kartları Windows ${{ github.run_number }}
+          files: win/dist/KelimeKartlari-Kurulum.exe
+          make_latest: false
